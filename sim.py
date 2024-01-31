@@ -82,9 +82,19 @@ def mass_sim_list(decks, enemy_decks, bge, defense_mode = False, last = None):
 	decks = decks[-last:]
 	mode = 'defense' if defense_mode else 'offense'
 	print(f'\nTesting {len(decks)} hashes ({len(enemy_decks)} enemy decks; BGEs = [{bge}]; N = {number_sims}; {mode}):')
+	results = []
 	for deck in decks:
 		score = mass_sim(deck, enemy_decks, bge, defense_mode)
 		print(deck, str(score) + '%')
+		results.append([deck, score])
+	results.sort(key = lambda r : r[1], reverse = True)
+	return results
+
+def export_results(results, file = 'out.txt', show = True):
+	if file:
+		with open(file, 'w') as f: f.write('\n'.join(f'{r[0]}, {r[1]}%' for r in results))
+	if show:
+		print('\n' + '\n'.join(f'\t#{results.index(r) + 1} {r[0]}: {r[1]}%' for r in results))
 
 
 bge = challenges['Equilibrium'] # empty BGE ID
@@ -96,6 +106,8 @@ enemy_decks = load_enemy_decks('guild_defs', top = 50)
 
 with open('hashes.txt') as f: decks = f.read().split()
 
-mass_sim_list(decks, enemy_decks, bge, last = 30) # test only the last decks on the list
-mass_sim_list(decks, enemy_decks, bge, True, last = 30) # defense
+results = mass_sim_list(decks, enemy_decks, bge, last = 30) # test only the last decks on the list
+export_results(results[:10]) # top 10 rates
+results = mass_sim_list(decks, enemy_decks, bge, True, last = 30) # defense
+export_results(results[:10])
 
