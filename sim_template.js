@@ -97,8 +97,17 @@ if (cluster.isMaster) {
         var win_rate = (SIMULATOR.wins / SIMULATOR.games * 100).toFixed(2);
         response.json({ 'win_rate': win_rate });
     })
-    app.post('/current_bges', (request, response) => {
+    app.get('/current_bges', (request, response) => {
         response.json(current_bges.join(','));
+    })
+    app.get('/card_data', (request, response) => {
+        response.json(CARDS);
+    })
+    app.get('/rune_data', (request, response) => {
+        response.json(RUNES);
+    })
+    app.get('/bge_data', (request, response) => {
+        response.json(BATTLEGROUNDS);
     })
     app.listen(1337, () => {
         console.log(`Simulation server started (worker ${cluster.worker.id}).`);
