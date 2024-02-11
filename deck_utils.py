@@ -51,9 +51,10 @@ def decimal_to_base64(dec):
 
 def unit_to_base64(unit):
 	unit_id = int(unit['id'])
-	level = int(unit['level']) - 1
+	card = card_data[str(unit_id)]
+	level = int(unit.get('level', card['maxLevel'])) - 1
 	fusion = int(unit_id / 10000)
-	if 'shard_card' in card_data[str(unit_id)]:
+	if 'shard_card' in card:
 		fusion = int(level / 7)
 	level = level % 7
 	rune_id = 0
