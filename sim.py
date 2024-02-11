@@ -125,5 +125,20 @@ with open('hashes.txt') as f: decks = f.read().split()
 card_data = get_card_data()
 set_card_data(card_data)
 
-for deck in decks:
-	assert deck == deck2hash(hash2deck(deck))
+commanders = [c for c in card_data.values() if c['card_type'] == '1']
+player_commanders = [c['id'] for c in commanders if c['set'] == '7000' and c['rarity'] == 4]
+
+def hero_test(deck):
+	print(f'\n{deck} {mass_sim(deck, enemy_decks, bge)}% (original)')
+	deck = hash2deck(deck)
+	hashes = []
+	for hero in player_commanders:
+		deck[0] = card_data[hero]
+		hashes.append(deck2hash(deck))
+	results = mass_sim_list(hashes, enemy_decks, bge)
+	for r in results: # remap hash -> hero name
+		r[0] = hash2deck(r[0])[0]['name']
+	export_results(results, False)
+
+for deck in decks[:5]:
+	hero_test(deck)
