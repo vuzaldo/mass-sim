@@ -123,6 +123,7 @@ with open('hashes.txt') as f: decks = f.read().split()
 # export_results(results[:10])
 
 card_data = get_card_data()
+rune_data = get_rune_data()
 set_card_data(card_data)
 
 commanders = [c for c in card_data.values() if c['card_type'] == '1']
@@ -140,5 +141,26 @@ def hero_test(deck):
 		r[0] = hash2deck(r[0])[0]['name']
 	export_results(results, False)
 
+def card_info(card):
+	level = 'L' + str(card['level']) + ', ' if card['maxLevel'] == 10 else ''
+	rune = rune_data[str(card['rune'])]['name'].replace('Rune of ', '')
+	return card['name'] + f' ({level}{rune})'
+
+def remove_weakest_card(deck):
+	print(f'\n{deck} {mass_sim(deck, enemy_decks, bge)}% (original)')
+	deck = hash2deck(deck)
+	hashes, removed = [], {}
+	for i in range(1, len(deck)):
+		h = deck2hash(deck[:i] + deck[i + 1:])
+		removed[h] = deck[i]
+		hashes.append(h)
+	results = mass_sim_list(hashes, enemy_decks, bge)
+	deck = results[0][0]
+	for r in results: # remap hash -> removed card
+		r[0] = 'Remove ' + card_info(removed[r[0]])
+	export_results(results, False)
+	return deck
+
 for deck in decks[:5]:
 	hero_test(deck)
+	deck = remove_weakest_card(deck)
