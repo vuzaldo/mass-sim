@@ -1,5 +1,5 @@
 
-import requests, json, threading, subprocess
+import requests, json, subprocess
 from deck_utils import *
 
 def update_sim():
@@ -34,26 +34,13 @@ number_sims = 10000 # quick/decent estimation amount distributed against multipl
 
 seed_rng = 1337 # seed the RNG for "stable" results (results will be the same when using the same seed and set of parameters)
 
-def run_sim(sim_options, results):
-	res = requests.post(sim_url + '/sim', json = sim_options)
-	res = float(res.json()['win_rate'])
-	results.append(res)
-
-def mass_sim(deck, enemy_decks, bge, defense_mode = False):
-	threads, results = [], []
+def mass_sim(decks, enemy_decks, bge, defense_mode = False):
 	sims = round(number_sims / len(enemy_decks))
-	for enemy in enemy_decks:
-		options = { 'bge': bge, 'sims': sims, 'seed': seed_rng }
-		options['deck'], options['deck2'] = (enemy, deck) if defense_mode else (deck, enemy)
-		t = threading.Thread(target = run_sim, args = [options, results])
-		t.start()
-		threads.append(t)
-	for t in threads:
-		t.join()
-	score = sum(results) / len(results)
-	score = 100 - score if defense_mode else score
-	score = round(score, 2)
-	return score
+	sim_options = { 'bge': bge, 'sims': sims, 'seed': seed_rng }
+	attackers, defenders = (enemy_decks, decks) if defense_mode else (decks, enemy_decks)
+	data = { 'attackers': attackers, 'defenders': defenders, 'options': sim_options }
+	results = requests.post(sim_url + '/sim', json = data).json()
+	return results
 
 def get_current_bges():
 	return requests.get(sim_url + '/current_bges').json()
@@ -88,17 +75,32 @@ def load_enemy_decks(file, top = None):
 	decks = decks[:top]
 	return decks
 
-def mass_sim_list(decks, enemy_decks, bge, defense_mode = False, last = None):
+def average(results):
+	score = sum(results) / len(results)
+	score = round(score, 2)
+	return score
+
+def mass_sim_deck(deck, enemy_decks, bge, defense_mode = False):
+	results = mass_sim([deck], enemy_decks, bge, defense_mode)
+	results = [win_rate for attacker, defender, win_rate in results]
+	score = average(results)
+	score = 100 - score if defense_mode else score
+	return score
+
+def mass_sim_list(decks, enemy_decks, bge, defense_mode = False, sort = True, last = None):
 	last = last if last else len(decks)
 	decks = decks[-last:]
 	mode = 'defense' if defense_mode else 'offense'
-	print(f'\nTesting {len(decks)} hashes ({len(enemy_decks)} enemy decks; BGEs = [{bge}]; N = {number_sims}; {mode}):')
-	results = []
-	for deck in decks:
-		score = mass_sim(deck, enemy_decks, bge, defense_mode)
-		print(deck, str(score) + '%')
-		results.append([deck, score])
-	results.sort(key = lambda r : r[1], reverse = True)
+	print(f'\nTesting {len(decks)} hashes ({len(enemy_decks)} enemy decks; BGEs = [{bge}]; N = {number_sims}; {mode})...')
+	results = mass_sim(decks, enemy_decks, bge, defense_mode)
+	rows, cols = {}, {}
+	for attacker, defender, win_rate in results:
+		rows[attacker] = rows.get(attacker, []) + [win_rate]
+		cols[defender] = cols.get(defender, []) + [100 - win_rate]
+	results = cols if defense_mode else rows
+	results = [[r, average(results[r])] for r in results]
+	if sort:
+		results.sort(key = lambda r : r[1], reverse = True)
 	return results
 
 def export_results(results, file = 'out.txt', show = True):
@@ -130,7 +132,7 @@ commanders = [c for c in card_data.values() if c['card_type'] == '1']
 player_commanders = [c['id'] for c in commanders if c['set'] == '7000' and c['rarity'] == 4]
 
 def hero_test(deck):
-	print(f'\n{deck} {mass_sim(deck, enemy_decks, bge)}% (original)')
+	print(f'\n{deck} {mass_sim_deck(deck, enemy_decks, bge)}% (original)')
 	deck = hash2deck(deck)
 	hashes = []
 	for hero in player_commanders:
@@ -147,7 +149,7 @@ def card_info(card):
 	return card['name'] + f' ({level}{rune})'
 
 def remove_weakest_card(deck):
-	print(f'\n{deck} {mass_sim(deck, enemy_decks, bge)}% (original)')
+	print(f'\n{deck} {mass_sim_deck(deck, enemy_decks, bge)}% (original)')
 	deck = hash2deck(deck)
 	hashes, removed = [], {}
 	for i in range(1, len(deck)):

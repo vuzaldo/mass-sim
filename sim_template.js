@@ -2,14 +2,14 @@
 const express = require('express');
 const app = express();
 
-const cluster = require('cluster');
+const { Worker, isMainThread, parentPort } = require('worker_threads');
 const num_workers = require('os').cpus().length - 1;
 
 const seedrandom = require('seedrandom');
 
 require('./data.min.js');
 
-if (cluster.isMaster) {
+if (isMainThread) {
 	console.log('Checking data...');
 	console.log('Skills:', Object.keys(SKILL_DATA).length);
 	console.log('Runes:', Object.keys(RUNES).length);
@@ -88,16 +88,32 @@ SIM_CONTROLLER.startsim = function (options) {
 	return winRate;
 }
 
-if (cluster.isMaster) {
-	console.log(`Starting ${num_workers} workers...`);
-	for (let i = 0; i < num_workers; i++){
-		cluster.fork();
+if (isMainThread) {
+	const workers = [];
+	for (let i = 0; i < num_workers; i++) {
+		workers.push(new Worker(__filename));
 	}
-} else {
 	app.use(express.json());
 	app.post('/sim', (request, response) => {
-		const winRate = SIM_CONTROLLER.startsim(request.body);
-		response.json({ 'win_rate': winRate });
+		const { attackers, defenders, options } = request.body;
+		const totalMatchups = attackers.length * defenders.length;
+		const matchupsPerWorker = Math.ceil(totalMatchups / num_workers);
+		console.log(`Request received: ${totalMatchups} matchups (${matchupsPerWorker} per worker)`);
+		let results = [];
+		const handleWorkerMessage = (result) => {
+			results = results.concat(result);
+			if (results.length == totalMatchups) {
+				console.log('Request finished processing');
+				response.json(results);
+			}
+		};
+		for (let i = 0; i < num_workers; i++) {
+			const startIndex = i * matchupsPerWorker;
+			const endIndex = Math.min((i + 1) * matchupsPerWorker, totalMatchups);
+			workers[i].removeAllListeners('message');
+			workers[i].on('message', handleWorkerMessage);
+			workers[i].postMessage([attackers, defenders, startIndex, endIndex, options]);
+		}
 	})
 	app.get('/current_bges', (request, response) => {
 		response.json(current_bges.join(','));
@@ -112,6 +128,17 @@ if (cluster.isMaster) {
 		response.json(BATTLEGROUNDS);
 	})
 	app.listen(1337, () => {
-		console.log(`Simulation server started (worker ${cluster.worker.id}).`);
+		console.log(`Simulation server started (${num_workers} workers).`);
 	})
+} else {
+	parentPort.on('message', ([attackers, defenders, startIndex, endIndex, simOptions]) => {
+		const results = [];
+		for (let i = startIndex; i < endIndex; i++) {
+			const attacker = attackers[Math.floor(i / defenders.length)];
+			const defender = defenders[i % defenders.length];
+			const winRate = SIM_CONTROLLER.startsim({ ...simOptions, deck: attacker, deck2: defender });
+			results.push([attacker, defender, winRate]);
+		}
+		parentPort.postMessage(results);
+	});
 }
